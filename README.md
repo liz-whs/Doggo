@@ -65,7 +65,7 @@ Rotas implementadas na versão atual:
 | Método | Rota | Descrição | Resposta |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/` | Interface web de controle. | HTML |
-| `GET` | `/abrir` | Move o servo para a posição aberta (180°). | `Aberto` |
+| `GET` | `/abrir` | Move o servo para a posição aberta (90°). | `Aberto` |
 | `GET` | `/fechar` | Move o servo para a posição fechada (0°). | `Fechado` |
 | `GET` | `/dose` | Libera uma porção: abre o dispenser por 400 ms e fecha em seguida. | `Porção liberada!` |
 
