@@ -1,45 +1,93 @@
-### Protocolos e Pilha TCP/IP Utilizados:
-* **Camada de Aplicação:** HTTP / NTP (Network Time Protocol para carimbo de hora).
-* **Camada de Transporte:** TCP (porta 80 para escuta de requisições).
-* **Camada de Rede:** IP (Endereçamento IPv4 estático/dinâmico).
-* **Camada de Enlace:** Wi-Fi IEEE 802.11 b/g/n (Armazenamento de Endereço MAC).
+# Doggo
 
----
+Sistema IoT embarcado em ESP32 que funciona como alimentador e bebedouro automático para pets. O ESP32 atua como servidor HTTP na rede Wi-Fi local e oferece uma página web de onde o tutor libera ração, acompanha a quantidade de ração na tigela e a temperatura da água, e liga ou desliga a fonte de água. Os eventos do sistema são registrados com data e hora na memória Flash (LittleFS).
 
-## 🛠️ Especificação de Hardware
+Situação atual: o protótipo físico está montado e o dispenser de ração é controlado pela página web. A balança, o sensor de temperatura, a fonte de água, a API completa e o registro de eventos estão em desenvolvimento.
 
-### Sensores (Entradas):
-1. **Célula de Carga 1kg + Módulo HX711:** Balança digital de precisão para medição contínua da massa de ração disponível na tigela.
-2. **Sensor DS18B20 (À prova d'água):** Leitura da temperatura da água no reservatório da fonte.
+![Interface web do Doggo](docs/interface-web.png)
 
-### Atuadores (Saídas):
-1. **Servomotor SG90 (9g):** Atuador mecânico para abertura/fechamento controlado do dispenser de ração (liberação por peso alvo).
-2. **Módulo Relé 5V (1 Canal):** Atuador chaveador para acionamento/interrupção da fonte de água elétrica.
+## Sumário
 
----
+1. [Funcionalidades](#funcionalidades)
+2. [Hardware](#hardware)
+3. [Protocolos](#protocolos)
+4. [API](#api)
+5. [Registro de eventos](#registro-de-eventos)
+6. [Progresso](#progresso)
+7. [Pendências](#pendências)
+8. [Estrutura do repositório](#estrutura-do-repositório)
+9. [Como executar](#como-executar)
 
-## 💻 Endpoints da API (Rotas do Servidor)
+## Funcionalidades
 
-O ESP32 responde aos seguintes rotas HTTP:
+| Funcionalidade | Status |
+| :--- | :--- |
+| Página web de controle servida pelo ESP32 | Concluído |
+| Abrir, fechar e liberar uma porção de ração pelo servo | Concluído |
+| Painel com indicador de conexão e horário da última porção | Concluído |
+| Conexão Wi-Fi como cliente ou como ponto de acesso (modo AP) | Concluído |
+| Dosagem por peso com a balança (HX711) | Pendente |
+| Leitura da temperatura da água (DS18B20) | Pendente |
+| Acionamento da fonte de água pelo relé | Pendente |
+| Rotas `/status`, `/alimentar`, `/fonte` e `/logs` | Pendente |
+| Registro de eventos com data e hora (NTP) em LittleFS | Pendente |
+| Reconexão automática do Wi-Fi | Pendente |
 
-| Método | Endpoint | Descrição | Exemplo de Retorno / Parâmetro |
+## Hardware
+
+| Componente | Função |
+| :--- | :--- |
+| ESP32 | Microcontrolador com Wi-Fi; executa o servidor web. |
+| Célula de carga 1 kg + módulo HX711 | Mede a massa de ração disponível na tigela. |
+| Sensor de temperatura DS18B20 (à prova d'água) | Mede a temperatura da água no reservatório. |
+| Servomotor SG90 (9 g) | Abre e fecha o dispenser de ração. |
+| Módulo relé 5 V (1 canal) | Liga e desliga a fonte de água elétrica. |
+
+Ligações já definidas no firmware:
+
+| Componente | Pino do ESP32 |
+| :--- | :--- |
+| Servomotor SG90 (sinal) | GPIO 19 |
+
+## Protocolos
+
+| Camada | Protocolo |
+| :--- | :--- |
+| Aplicação | HTTP (interface e API) e NTP (data e hora dos registros) |
+| Transporte | TCP, porta 80 |
+| Rede | IPv4, endereço estático ou dinâmico |
+| Enlace | Wi-Fi IEEE 802.11 b/g/n |
+
+## API
+
+Rotas implementadas na versão atual:
+
+| Método | Rota | Descrição | Resposta |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/` | Retorna a interface web principal de monitoramento. | HTML/CSS/JS embarcado |
-| `GET` | `/status` | Exibe o IP, MAC Address, estado da rede e dados dos sensores. | JSON: `{ "ip": "192.168.1.100", "peso_g": 120.5, "temp_agua": 22.4 }` |
-| `POST` | `/alimentar` | Inicia a dosagem automática via servomotor até atingir o peso informado. | Query: `?gramas=150` |
-| `POST` | `/fonte` | Lida/desliga o relé da fonte de água. | Query: `?status=1` ou `?status=0` |
-| `GET` | `/logs` | Retorna o histórico de logs persistido na memória Flash (`LittleFS`). | Arquivo de texto puro / JSON |
+| `GET` | `/` | Interface web de controle. | HTML |
+| `GET` | `/abrir` | Move o servo para a posição aberta (180°). | `Aberto` |
+| `GET` | `/fechar` | Move o servo para a posição fechada (0°). | `Fechado` |
+| `GET` | `/dose` | Libera uma porção: abre o dispenser por 400 ms e fecha em seguida. | `Porção liberada!` |
 
----
+Rotas planejadas:
 
-## 📜 Log Persistente e Gerenciamento de Erros
+| Método | Rota | Descrição | Parâmetro / resposta |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/status` | IP, MAC, estado da rede e leituras dos sensores. | `{ "ip": "192.168.1.100", "peso_g": 120.5, "temp_agua": 22.4 }` |
+| `POST` | `/alimentar` | Libera ração até a balança atingir o peso informado. | `?gramas=150` |
+| `POST` | `/fonte` | Liga ou desliga a fonte de água. | `?status=1` ou `?status=0` |
+| `GET` | `/logs` | Histórico de eventos gravado na memória Flash. | Texto ou JSON |
 
-Em conformidade com os requisitos da disciplina:
-* O ESP32 realiza **reconexão automática** em caso de queda na rede Wi-Fi.
-* Os eventos de sistema são carimbados com **data e hora reais** sincronizadas via servidor NTP público (`pool.ntp.org`).
-* Os logs são categorizados em **`[INFO]`**, **`[AVISO]`** e **`[ERRO]`** e gravados na memória Flash interna utilizando a biblioteca **LittleFS** para garantir persistência após reinicializações.
+## Registro de eventos
 
-### Exemplo de Log Gravado:
+Conforme os requisitos da disciplina, o sistema deverá:
+
+- reconectar-se automaticamente quando a rede Wi-Fi cair;
+- registrar os eventos com data e hora sincronizadas pelo servidor NTP `pool.ntp.org`;
+- classificar os registros em `[INFO]`, `[AVISO]` e `[ERRO]` e gravá-los na memória Flash com a biblioteca LittleFS, para que sejam mantidos após reinicializações.
+
+Formato planejado:
+
 ```text
 [2026-09-10 10:15:02] [INFO] Sistema inicializado. IP: 192.168.1.105 | MAC: AA:BB:CC:11:22:33
 [2026-09-10 10:15:03] [INFO] Sincronização NTP realizada com sucesso.
@@ -48,3 +96,50 @@ Em conformidade com os requisitos da disciplina:
 [2026-09-10 11:00:00] [AVISO] Temperatura da água elevada: 28.5°C.
 [2026-09-10 11:45:12] [ERRO] Conexão Wi-Fi perdida. Iniciando rotina de reconexão...
 [2026-09-10 11:45:18] [INFO] Wi-Fi reestabelecido com sucesso.
+```
+
+## Progresso
+
+- [x] Protótipo físico em papelão
+- [x] Interface web responsiva
+- [x] Aquisição e teste de todos os componentes de hardware
+- [x] Firmware com servidor web na porta 80 e página de controle embutida
+- [x] Conexão Wi-Fi como cliente da rede local ou como ponto de acesso (modo AP)
+- [x] Controle do servo pela página: abrir, fechar e liberar uma porção
+- [x] Nova interface web com painel de cartões, indicador de conexão e horário da última porção
+
+## Pendências
+
+- [ ] Leitura da balança (HX711) e calibração da célula de carga
+- [ ] Leitura da temperatura da água (DS18B20) e alerta de temperatura elevada
+- [ ] Acionamento do relé da fonte de água
+- [ ] Rotas `/status`, `/alimentar`, `/fonte` e `/logs`
+- [ ] Dosagem por peso; atualmente a porção é liberada por tempo
+- [ ] Sincronização de hora por NTP e registro de eventos em LittleFS
+- [ ] Reconexão automática do Wi-Fi; atualmente, se a rede não conectar na inicialização, a placa permanece aguardando
+- [ ] Senha do modo AP com no mínimo 8 caracteres, exigência do ESP32; com a senha atual a rede não é criada
+- [ ] Renomear a rede do modo AP, ainda chamada "Doogo"
+
+## Estrutura do repositório
+
+```text
+Doggo/
+├── README.md
+├── docs/
+│   └── interface-web.png    Captura da interface web
+└── firmware/
+    └── doggo/
+        └── doggo.ino        Firmware do ESP32
+```
+
+## Como executar
+
+1. Instale a [Arduino IDE](https://www.arduino.cc/en/software) e adicione o pacote de placas ESP32 da Espressif pelo Gerenciador de Placas.
+2. Instale a biblioteca ESP32Servo pelo Gerenciador de Bibliotecas.
+3. Abra `firmware/doggo/doggo.ino`.
+4. Defina o modo de rede no início do arquivo:
+   - `USAR_AP = false`: o ESP32 conecta-se à rede definida em `WIFI_SSID` e `WIFI_SENHA`;
+   - `USAR_AP = true`: o ESP32 cria a própria rede (`AP_SSID` e `AP_SENHA`).
+5. Conecte o sinal do servo ao GPIO 19, selecione a placa e a porta e faça o upload.
+6. Abra o Monitor Serial a 115200 baud. O endereço da interface é exibido na linha `Acesse: http://...`.
+7. Acesse esse endereço pelo navegador de um dispositivo conectado à mesma rede.
