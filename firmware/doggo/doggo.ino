@@ -29,7 +29,7 @@ const char PAGINA[] PROGMEM = R"rawliteral(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Doogo</title>
+<title>Doggo</title>
 
 <style>
 
@@ -426,7 +426,7 @@ footer {
                 <ellipse cx="15" cy="5.6" rx="2.1" ry="2.7"/>
             </svg>
         </div>
-        <span class="nome">Doogo</span>
+        <span class="nome">Doggo</span>
     </div>
     <div class="conexao" id="conexao">
         <span class="bolinha"></span>
@@ -559,7 +559,7 @@ footer {
 </div>
 </main>
 <footer>
-    Doogo · alimentador inteligente
+    Doggo · alimentador inteligente
 </footer>
 </div>
 <script>
@@ -637,7 +637,7 @@ function enviar(acao) {
 
         .catch(() => {
             status.textContent =
-                'Erro: sem conexão com o Doogo';
+                'Erro: sem conexão com o Doggo';
             status.className =
                 'erro';
             conexao.className =
@@ -709,7 +709,7 @@ void rotaDose() {
   server.send(
     200,
     "text/plain; charset=utf-8",
-    "Dose liberada!"
+    "Porção liberada!"
   );
 }
 
