@@ -45,27 +45,15 @@ Situação atual: o protótipo físico está montado e o dispenser de ração é
 
 ### Ligações
 
-O passo a passo completo, com as cores dos fios, está no [guia de conexões](docs/guia-de-conexoes.pdf).
+O passo a passo completo, com as cores dos fios, está no [guia de conexões](docs/guia-de-conexoes.md).
 
-| Componente | Ligação | ESP32 |
-| :--- | :--- | :--- |
-| HX711 | VCC | 3V3 |
-| HX711 | GND | GND |
-| HX711 | DT | GPIO 16 |
-| HX711 | SCK | GPIO 17 |
-| Servomotor SG90 | Sinal | GPIO 19 |
-| Servomotor SG90 | Positivo | 5V |
-| Servomotor SG90 | Negativo | GND |
-| DS18B20 | Alimentação | 3V3 |
-| DS18B20 | Terra | GND |
-| DS18B20 | Dados | GPIO 25 |
-| DS18B20 | Resistor de 4,7 kΩ | Entre 3V3 e DATA |
+| Componente | Pinos do ESP32 |
+| :--- | :--- |
+| HX711 (balança) | DT no GPIO 16, SCK no GPIO 17, alimentação em 3V3 |
+| Servomotor SG90 | Sinal no GPIO 19, alimentação em 5V |
+| DS18B20 | Dados no GPIO 25 (resistor de 4,7 kΩ entre 3V3 e DATA), alimentação em 3V3 |
 
-Os fios da célula de carga são soldados no HX711: vermelho em E+, preto em E−, branco em A− e verde em A+.
-
-As alimentações de 3V3 e 5V devem permanecer separadas. Use uma fonte adequada para o servo.
-
-Na versão atual do firmware, apenas o servo (GPIO 19) está em uso; os pinos do HX711 e do DS18B20 são os da montagem e serão usados na integração dos sensores.
+Na versão atual do firmware, apenas o servo (GPIO 19) está em uso.
 
 ## Protocolos
 
@@ -144,7 +132,7 @@ Formato planejado:
 Doggo/
 ├── README.md
 ├── docs/
-│   ├── guia-de-conexoes.pdf Guia de conexões do hardware
+│   ├── guia-de-conexoes.md  Guia de conexões do hardware
 │   └── interface-web.png    Captura da interface web
 └── firmware/
     └── doggo/
@@ -159,6 +147,6 @@ Doggo/
 4. Defina o modo de rede no início do arquivo:
    - `USAR_AP = false`: o ESP32 conecta-se à rede definida em `WIFI_SSID` e `WIFI_SENHA`;
    - `USAR_AP = true`: o ESP32 cria a própria rede (`AP_SSID` e `AP_SENHA`).
-5. Faça as ligações conforme o [guia de conexões](docs/guia-de-conexoes.pdf), selecione a placa e a porta e faça o upload.
+5. Faça as ligações conforme o [guia de conexões](docs/guia-de-conexoes.md), selecione a placa e a porta e faça o upload.
 6. Abra o Monitor Serial a 115200 baud. O endereço da interface é exibido na linha `Acesse: http://...`.
 7. Acesse esse endereço pelo navegador de um dispositivo conectado à mesma rede.
