@@ -1,152 +1,189 @@
 # Doggo
 
-Sistema IoT embarcado em ESP32 que funciona como alimentador e bebedouro automático para pets. O ESP32 atua como servidor HTTP na rede Wi-Fi local e oferece uma página web de onde o tutor libera ração, acompanha a quantidade de ração na tigela e a temperatura da água, e liga ou desliga a fonte de água. Os eventos do sistema são registrados com data e hora na memória Flash (LittleFS).
+Sistema IoT embarcado em **ESP32** para alimentação e monitoramento da água de pets. O dispositivo funciona como servidor HTTP local e permite controlar o dispenser de ração por uma página web. A evolução planejada inclui pesagem por célula de carga, monitoramento da temperatura da água e integração com **Telegram**.
 
-Situação atual: o protótipo físico está montado e o dispenser de ração é controlado pela página web. A balança, o sensor de temperatura, a fonte de água, a API completa e o registro de eventos estão em desenvolvimento.
+> **Estado do projeto:** o protótipo físico está montado e a liberação temporizada de ração pela página web funciona no firmware existente. Leitura da balança, cálculo da porção, leitura da temperatura, alertas e Telegram **ainda são pendências**. O acionamento elétrico de bomba/fonte de água foi **retirado do escopo**.
 
 ![Interface web do Doggo](docs/interface-web.png)
 
 ## Sumário
 
-1. [Funcionalidades](#funcionalidades)
-2. [Hardware](#hardware)
-3. [Protocolos](#protocolos)
-4. [API](#api)
-5. [Registro de eventos](#registro-de-eventos)
-6. [Progresso](#progresso)
+1. [Funcionalidades e progresso](#funcionalidades-e-progresso)
+2. [Hardware e ligações](#hardware-e-ligações)
+3. [Rede Wi-Fi e credenciais](#rede-wi-fi-e-credenciais)
+4. [Telegram — escopo futuro](#telegram--escopo-futuro)
+5. [Protocolos e API](#protocolos-e-api)
+6. [Registros de eventos](#registros-de-eventos)
 7. [Pendências](#pendências)
 8. [Estrutura do repositório](#estrutura-do-repositório)
 9. [Como executar](#como-executar)
 
-## Funcionalidades
+## Funcionalidades e progresso
 
-| Funcionalidade | Status |
+| Recurso | Situação |
 | :--- | :--- |
-| Página web de controle servida pelo ESP32 | Concluído |
-| Abrir, fechar e liberar uma porção de ração pelo servo | Concluído |
-| Painel com indicador de conexão e horário da última porção | Concluído |
-| Conexão Wi-Fi como cliente ou como ponto de acesso (modo AP) | Concluído |
-| Dosagem por peso com a balança (HX711) | Pendente |
-| Leitura da temperatura da água (DS18B20) | Pendente |
-| Acionamento da fonte de água pelo relé | Pendente |
-| Rotas `/status`, `/alimentar`, `/fonte` e `/logs` | Pendente |
-| Registro de eventos com data e hora (NTP) em LittleFS | Pendente |
-| Reconexão automática do Wi-Fi | Pendente |
+| Página de controle servida pelo ESP32 | Implementado |
+| Abrir, fechar e liberar ração pelo servomotor | Implementado; dose temporizada |
+| Indicador visual de conexão e hora da última porção | Implementado na interface, não persistido no dispositivo |
+| Wi-Fi cliente e modo ponto de acesso (AP) | Implementado; exige configuração local de credenciais |
+| Nome do AP `Doggo` | Atualizado |
+| Leitura de peso HX711 e calibração | Pendente |
+| Cálculo da quantidade de ração por peso | Pendente de testes da montagem |
+| Leitura DS18B20 | Pendente |
+| Alerta de temperatura da água acima de 25 °C | Pendente |
+| Comando para liberar ração pelo Telegram | Pendente |
+| Mensagem Telegram com data e hora após liberação | Pendente |
+| NTP, logs persistentes LittleFS e reconexão automática | Pendente |
+| Acionamento de bomba, fonte ou relé | **Fora do escopo** |
 
-## Hardware
+Atualmente, o comando `/dose` abre o servo por **400 ms** e o fecha. Isso **não equivale** à dosagem por peso. O horário da última porção mostrado no navegador é uma informação local à interface, não uma confirmação persistida ou enviada ao Telegram.
 
-| Componente | Função |
-| :--- | :--- |
-| ESP32 | Microcontrolador com Wi-Fi; executa o servidor web. |
-| Célula de carga 1 kg + módulo HX711 | Mede a massa de ração disponível na tigela. |
-| Sensor de temperatura DS18B20 (à prova d'água) | Mede a temperatura da água no reservatório. |
-| Servomotor SG90 (9 g) | Abre e fecha o dispenser de ração. |
-| Módulo relé 5 V (1 canal) | Liga e desliga a fonte de água elétrica. |
+## Hardware e ligações
 
-### Ligações
+| Componente | Função | Pinos previstos |
+| :--- | :--- | :--- |
+| ESP32 | Controlador com servidor web e Wi-Fi | — |
+| Servomotor SG90 (9 g) | Abertura e fechamento do dispenser | Sinal GPIO 19, alimentação 5V |
+| Célula de carga de 1 kg + HX711 | Medição da ração na tigela | DT GPIO 16, SCK GPIO 17, alimentação 3V3 |
+| DS18B20 à prova d'água | Medição da temperatura da água | DATA GPIO 25, alimentação 3V3, resistor 4,7 kΩ para 3V3 |
 
-O passo a passo completo, com as cores dos fios, está no [guia de conexões](docs/guia-de-conexoes.md).
+Consulte o [guia de conexões](docs/guia-de-conexoes.md). Mantenha alimentação apropriada para o servomotor e GND comum. **Na versão atual do código, somente o servo está integrado ao firmware.** A montagem da balança e do sensor precisa de testes antes de implementar suas leituras.
 
-| Componente | Pinos do ESP32 |
-| :--- | :--- |
-| HX711 (balança) | DT no GPIO 16, SCK no GPIO 17, alimentação em 3V3 |
-| Servomotor SG90 | Sinal no GPIO 19, alimentação em 5V |
-| DS18B20 | Dados no GPIO 25 (resistor de 4,7 kΩ entre 3V3 e DATA), alimentação em 3V3 |
+A bomba, o relé e o acionamento da fonte não fazem mais parte do escopo do Doggo. O sistema deve **monitorar a temperatura** da água, sem ligá-la ou desligá-la eletricamente.
 
-Na versão atual do firmware, apenas o servo (GPIO 19) está em uso.
+## Rede Wi-Fi e credenciais
 
-## Protocolos
+O ESP32 mantém os dois modos existentes:
 
-| Camada | Protocolo |
-| :--- | :--- |
-| Aplicação | HTTP (interface e API) e NTP (data e hora dos registros) |
-| Transporte | TCP, porta 80 |
-| Rede | IPv4, endereço estático ou dinâmico |
-| Enlace | Wi-Fi IEEE 802.11 b/g/n |
+- `USAR_AP = false`: conecta-se à rede Wi-Fi configurada em `WIFI_SSID` e `WIFI_SENHA`.
+- `USAR_AP = true`: cria a rede `Doggo`, protegida pela variável `AP_SENHA`.
 
-## API
+As credenciais **não ficam mais definidas no arquivo `doggo.ino` versionado**. São carregadas do arquivo local `firmware/doggo/secrets.h`, que está no `.gitignore`. O repositório contém somente `secrets.example.h`, com valores fictícios.
 
-Rotas implementadas na versão atual:
+### Preparação da configuração local
 
-| Método | Rota | Descrição | Resposta |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/` | Interface web de controle. | HTML |
-| `GET` | `/abrir` | Move o servo para a posição aberta (90°). | `Aberto` |
-| `GET` | `/fechar` | Move o servo para a posição fechada (0°). | `Fechado` |
-| `GET` | `/dose` | Libera uma porção: abre o dispenser por 400 ms e fecha em seguida. | `Porção liberada!` |
+1. Copie `firmware/doggo/secrets.example.h` para `firmware/doggo/secrets.h`.
+2. Preencha `WIFI_SSID` e `WIFI_SENHA` com os dados da sua rede; a rede da Ana será configurada privadamente na fase de testes.
+3. Defina `AP_SENHA` com **pelo menos 8 caracteres**.
+4. **Não envie `secrets.h` ao GitHub**, nem compartilhe tokens ou senhas em issues, commits e PRs.
 
-Rotas planejadas:
+A lógica Wi-Fi existente não foi alterada; a compilação passa a exigir a criação local de `secrets.h`. A reconexão automática segue pendente. Como as credenciais antigas constaram de versões anteriores do repositório, recomenda-se **trocar as senhas já expostas**, pois apenas ignorar o arquivo não remove o histórico Git.
 
-| Método | Rota | Descrição | Parâmetro / resposta |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/status` | IP, MAC, estado da rede e leituras dos sensores. | `{ "ip": "192.168.1.100", "peso_g": 120.5, "temp_agua": 22.4 }` |
-| `POST` | `/alimentar` | Libera ração até a balança atingir o peso informado. | `?gramas=150` |
-| `POST` | `/fonte` | Liga ou desliga a fonte de água. | `?status=1` ou `?status=0` |
-| `GET` | `/logs` | Histórico de eventos gravado na memória Flash. | Texto ou JSON |
+## Telegram — escopo futuro
 
-## Registro de eventos
+A integração Telegram **ainda não existe no firmware**. Os recursos abaixo descrevem o comportamento desejado para versões futuras.
 
-Conforme os requisitos da disciplina, o sistema deverá:
+### Comando de alimentação
 
-- reconectar-se automaticamente quando a rede Wi-Fi cair;
-- registrar os eventos com data e hora sincronizadas pelo servidor NTP `pool.ntp.org`;
-- classificar os registros em `[INFO]`, `[AVISO]` e `[ERRO]` e gravá-los na memória Flash com a biblioteca LittleFS, para que sejam mantidos após reinicializações.
+Um chat autorizado deverá solicitar a liberação de ração ao bot. O comando exato, a lista de chats autorizados e a forma de autenticação serão definidos posteriormente. O bot somente deve acionar o dispositivo após validar a solicitação.
 
-Formato planejado:
+### Confirmação de liberação
+
+Após a execução do acionamento, o sistema deverá enviar uma mensagem com **data e hora** da liberação e identificar o resultado. O registro deve ocorrer após o evento, e não quando o pedido chegar. Até que a balança esteja integrada, **não é possível afirmar que uma quantidade específica de ração foi efetivamente entregue**.
+
+Exemplo ilustrativo de mensagem futura (não funcional atualmente):
 
 ```text
-[2026-09-10 10:15:02] [INFO] Sistema inicializado. IP: 192.168.1.105 | MAC: AA:BB:CC:11:22:33
-[2026-09-10 10:15:03] [INFO] Sincronização NTP realizada com sucesso.
-[2026-09-10 10:20:15] [INFO] Dosagem solicitada: 100g. Servo acionado.
-[2026-09-10 10:20:22] [INFO] Dosagem concluída. Peso medido pelo HX711: 101.2g. Servo fechado.
-[2026-09-10 11:00:00] [AVISO] Temperatura da água elevada: 28.5°C.
-[2026-09-10 11:45:12] [ERRO] Conexão Wi-Fi perdida. Iniciando rotina de reconexão...
-[2026-09-10 11:45:18] [INFO] Wi-Fi reestabelecido com sucesso.
+Doggo — liberação de ração
+Data: 06/11/2026
+Hora: 10:37
+Status: comando de acionamento executado
 ```
 
-## Progresso
+### Alerta de temperatura
 
-- [x] Protótipo físico em papelão
-- [x] Interface web responsiva
-- [x] Aquisição e teste de todos os componentes de hardware
-- [x] Firmware com servidor web na porta 80 e página de controle embutida
-- [x] Conexão Wi-Fi como cliente da rede local ou como ponto de acesso (modo AP)
-- [x] Controle do servo pela página: abrir, fechar e liberar uma porção
-- [x] Nova interface web com painel de cartões, indicador de conexão e horário da última porção
+Quando a medição válida indicar temperatura da água **estritamente maior que 25 °C**, o sistema deverá notificar o chat autorizado via Telegram.
+
+A equipe ainda precisará definir o intervalo de leitura, regra contra mensagens repetidas (anti-spam), condição de retorno à normalidade e tratamento de falhas de sensor, Wi-Fi e envio ao Telegram. A regra não deve tratar ausência de leitura como temperatura normal.
+
+O token do bot deverá ser protegido fora do controle de versão. A integração deve usar comunicação segura com a API do Telegram.
+
+## Protocolos e API
+
+| Camada | Tecnologia | Situação |
+| :--- | :--- | :--- |
+| Aplicação | HTTP, interface web | Implementado |
+| Transporte | TCP, porta 80 | Implementado |
+| Rede | IPv4 e Wi-Fi IEEE 802.11 b/g/n | Implementado |
+| Sincronização de relógio | NTP | Pendente |
+| Mensagens e comandos | API do Telegram sobre HTTPS | Pendente |
+
+### Rotas existentes
+
+| Método | Rota | Comportamento |
+| :--- | :--- | :--- |
+| `GET` | `/` | Página HTML de controle |
+| `GET` | `/abrir` | Abre o servo (90°) |
+| `GET` | `/fechar` | Fecha o servo (0°) |
+| `GET` | `/dose` | Abre por 400 ms e fecha; responde `Porção liberada!` |
+
+### Rotas planejadas (não implementadas)
+
+- `GET /status`: retornar estado da rede e leituras válidas dos sensores.
+- `POST /alimentar`: solicitar dosagem controlada por peso, **após definir e testar o cálculo**.
+- `GET /logs`: consultar os eventos persistidos no dispositivo.
+
+A antiga rota planejada `/fonte` foi removida do escopo. Rotas que alteram o estado do dispositivo devem ter acesso protegido; a atual `GET /dose` também merece revisão futura por acionar um dispositivo com uma requisição GET.
+
+## Registros de eventos
+
+A sincronização NTP, o armazenamento em LittleFS e os logs classificados como `[INFO]`, `[AVISO]` e `[ERRO]` são **planejados, ainda não implementados**.
+
+Eventos previstos: início do sistema, conexão e queda do Wi-Fi, liberação de ração, falha do servo ou dos sensores, temperatura acima do limite e resultado dos envios ao Telegram.
+
+Exemplos ilustrativos (não são logs extraídos do dispositivo):
+
+```text
+[2026-11-06 10:35:00] [INFO] Solicitação de alimentação recebida.
+[2026-11-06 10:35:02] [INFO] Comando do servo finalizado.
+[2026-11-06 10:35:03] [INFO] Notificação de alimentação enviada ao Telegram.
+[2026-11-06 10:40:00] [AVISO] Temperatura da água: 25.8 °C (limite: 25 °C).
+```
+
+Não armazenar credenciais ou tokens em logs.
 
 ## Pendências
 
-- [ ] Leitura da balança (HX711) e calibração da célula de carga
-- [ ] Leitura da temperatura da água (DS18B20) e alerta de temperatura elevada
-- [ ] Acionamento do relé da fonte de água
-- [ ] Rotas `/status`, `/alimentar`, `/fonte` e `/logs`
-- [ ] Dosagem por peso; atualmente a porção é liberada por tempo
-- [ ] Sincronização de hora por NTP e registro de eventos em LittleFS
-- [ ] Reconexão automática do Wi-Fi; atualmente, se a rede não conectar na inicialização, a placa permanece aguardando
-- [ ] Senha do modo AP com no mínimo 8 caracteres, exigência do ESP32; com a senha atual a rede não é criada
-- [ ] Renomear a rede do modo AP, ainda chamada "Doogo"
+- [ ] Testar a montagem física e calibrar a célula de carga HX711.
+- [ ] Definir, **após os testes físicos**, peso-alvo, tolerância e estratégia de cálculo da porção.
+- [ ] Integrar leitura da temperatura com DS18B20.
+- [ ] Criar alerta Telegram para temperatura **acima de 25 °C**.
+- [ ] Definir políticas anti-spam, repetição e tratamento de falhas dos alertas.
+- [ ] Definir chats autorizados e comando do Telegram.
+- [ ] Implementar liberação de ração via Telegram.
+- [ ] Enviar confirmação com data/hora **após** liberação de ração.
+- [ ] Sincronizar data/hora por NTP e persistir logs com LittleFS.
+- [ ] Implementar reconexão Wi-Fi automática.
+- [ ] Configurar e testar privadamente a rede da Ana.
+- [ ] Testar compilação e funcionamento físico após externalização das credenciais.
+
+Consulte [mudanças planejadas e decisões da equipe](docs/mudancas-planejadas.md) para o escopo deste PR e os critérios de aceite.
 
 ## Estrutura do repositório
 
 ```text
 Doggo/
+├── .gitignore
 ├── README.md
 ├── docs/
-│   ├── guia-de-conexoes.md  Guia de conexões do hardware
-│   └── interface-web.png    Captura da interface web
+│   ├── guia-de-conexoes.md
+│   ├── interface-web.png
+│   └── mudancas-planejadas.md
 └── firmware/
     └── doggo/
-        └── doggo.ino        Firmware do ESP32
+        ├── doggo.ino
+        ├── secrets.example.h
+        └── secrets.h         # arquivo local, ignorado pelo Git
 ```
 
 ## Como executar
 
-1. Instale a [Arduino IDE](https://www.arduino.cc/en/software) e adicione o pacote de placas ESP32 da Espressif pelo Gerenciador de Placas.
-2. Instale a biblioteca ESP32Servo pelo Gerenciador de Bibliotecas.
-3. Abra `firmware/doggo/doggo.ino`.
-4. Defina o modo de rede no início do arquivo:
-   - `USAR_AP = false`: o ESP32 conecta-se à rede definida em `WIFI_SSID` e `WIFI_SENHA`;
-   - `USAR_AP = true`: o ESP32 cria a própria rede (`AP_SSID` e `AP_SENHA`).
-5. Faça as ligações conforme o [guia de conexões](docs/guia-de-conexoes.md), selecione a placa e a porta e faça o upload.
-6. Abra o Monitor Serial a 115200 baud. O endereço da interface é exibido na linha `Acesse: http://...`.
-7. Acesse esse endereço pelo navegador de um dispositivo conectado à mesma rede.
+1. Instale a [Arduino IDE](https://www.arduino.cc/en/software) e o pacote de placas ESP32 da Espressif.
+2. Instale a biblioteca `ESP32Servo`.
+3. Crie `firmware/doggo/secrets.h` copiando `secrets.example.h` e configure suas credenciais **localmente**. No modo AP, a senha precisa ter ao menos oito caracteres.
+4. Abra `firmware/doggo/doggo.ino` na Arduino IDE e ajuste `USAR_AP` conforme a necessidade.
+5. Faça as ligações seguindo o [guia de conexões](docs/guia-de-conexoes.md), selecione placa e porta e envie o firmware.
+6. Abra o Monitor Serial a **115200 baud** e verifique o endereço exibido após `Acesse: http://`.
+7. Abra esse endereço em um navegador conectado à rede correspondente.
+
+O firmware existente oferece apenas o controle web temporizado do servo. Balança, temperatura, mensagens Telegram, alertas e cálculo da porção não passam a funcionar por causa desta atualização documental.
