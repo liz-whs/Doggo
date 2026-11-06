@@ -25,8 +25,8 @@ Sistema IoT embarcado em **ESP32** para alimentação e monitoramento da água d
 | Página de controle servida pelo ESP32 | Implementado |
 | Abrir, fechar e liberar ração pelo servomotor | Implementado; dose temporizada |
 | Indicador visual de conexão e hora da última porção | Implementado na interface, não persistido no dispositivo |
-| Wi-Fi cliente e modo ponto de acesso (AP) | Implementado; exige configuração local de credenciais |
-| Nome do AP `Doggo` | Atualizado |
+| Wi-Fi cliente e modo ponto de acesso (AP) | Implementado; configuração diretamente no firmware |
+| Nome do AP `Doggo`, senha `doggo123` | Atualizado |
 | Leitura de peso HX711 e calibração | Pendente |
 | Cálculo da quantidade de ração por peso | Pendente de testes da montagem |
 | Leitura DS18B20 | Pendente |
@@ -53,21 +53,16 @@ A bomba, o relé e o acionamento da fonte não fazem mais parte do escopo do Dog
 
 ## Rede Wi-Fi e credenciais
 
-O ESP32 mantém os dois modos existentes:
+O firmware continua com os dois modos existentes e com as credenciais definidas diretamente em `firmware/doggo/doggo.ino`, sem arquivo `secrets.h`:
 
-- `USAR_AP = false`: conecta-se à rede Wi-Fi configurada em `WIFI_SSID` e `WIFI_SENHA`.
-- `USAR_AP = true`: cria a rede `Doggo`, protegida pela variável `AP_SENHA`.
+- `USAR_AP = false` (valor atual): ESP32 tenta conectar-se à rede Wi-Fi cliente configurada nas variáveis `WIFI_SSID` e `WIFI_SENHA`. Os valores dessas variáveis **não foram alterados neste PR**.
+- `USAR_AP = true`: ESP32 cria o ponto de acesso **`Doggo`**, com senha **`doggo123`** (8 caracteres).
 
-As credenciais **não ficam mais definidas no arquivo `doggo.ino` versionado**. São carregadas do arquivo local `firmware/doggo/secrets.h`, que está no `.gitignore`. O repositório contém somente `secrets.example.h`, com valores fictícios.
+O nome e a senha acima são do **ponto de acesso criado pelo ESP32**, não da rede Wi-Fi cliente. Para usar o AP, é necessário mudar `USAR_AP` para `true`; isso **não foi feito neste PR**, para preservar o comportamento existente.
 
-### Preparação da configuração local
+A rede da Ana ainda será configurada e testada posteriormente. Não foram implementadas alterações na lógica de conexão ou reconexão automática.
 
-1. Copie `firmware/doggo/secrets.example.h` para `firmware/doggo/secrets.h`.
-2. Preencha `WIFI_SSID` e `WIFI_SENHA` com os dados da sua rede; a rede da Ana será configurada privadamente na fase de testes.
-3. Defina `AP_SENHA` com **pelo menos 8 caracteres**.
-4. **Não envie `secrets.h` ao GitHub**, nem compartilhe tokens ou senhas em issues, commits e PRs.
-
-A lógica Wi-Fi existente não foi alterada; a compilação passa a exigir a criação local de `secrets.h`. A reconexão automática segue pendente. Como as credenciais antigas constaram de versões anteriores do repositório, recomenda-se **trocar as senhas já expostas**, pois apenas ignorar o arquivo não remove o histórico Git.
+**Observação de segurança:** a senha do AP está escrita no firmware conforme decidido pela equipe. Como o repositório é público, essa senha também ficará pública; não a reutilize em redes ou serviços pessoais. Recomenda-se também trocar credenciais reais anteriormente expostas no histórico do repositório.
 
 ## Telegram — escopo futuro
 
@@ -155,7 +150,7 @@ Não armazenar credenciais ou tokens em logs.
 - [ ] Sincronizar data/hora por NTP e persistir logs com LittleFS.
 - [ ] Implementar reconexão Wi-Fi automática.
 - [ ] Configurar e testar privadamente a rede da Ana.
-- [ ] Testar compilação e funcionamento físico após externalização das credenciais.
+- [ ] Testar compilação e funcionamento físico com a configuração atual do AP.
 
 Consulte [mudanças planejadas e decisões da equipe](docs/mudancas-planejadas.md) para o escopo deste PR e os critérios de aceite.
 
@@ -163,7 +158,6 @@ Consulte [mudanças planejadas e decisões da equipe](docs/mudancas-planejadas.m
 
 ```text
 Doggo/
-├── .gitignore
 ├── README.md
 ├── docs/
 │   ├── guia-de-conexoes.md
@@ -171,19 +165,18 @@ Doggo/
 │   └── mudancas-planejadas.md
 └── firmware/
     └── doggo/
-        ├── doggo.ino
-        ├── secrets.example.h
-        └── secrets.h         # arquivo local, ignorado pelo Git
+        └── doggo.ino
 ```
 
 ## Como executar
 
 1. Instale a [Arduino IDE](https://www.arduino.cc/en/software) e o pacote de placas ESP32 da Espressif.
 2. Instale a biblioteca `ESP32Servo`.
-3. Crie `firmware/doggo/secrets.h` copiando `secrets.example.h` e configure suas credenciais **localmente**. No modo AP, a senha precisa ter ao menos oito caracteres.
-4. Abra `firmware/doggo/doggo.ino` na Arduino IDE e ajuste `USAR_AP` conforme a necessidade.
-5. Faça as ligações seguindo o [guia de conexões](docs/guia-de-conexoes.md), selecione placa e porta e envie o firmware.
-6. Abra o Monitor Serial a **115200 baud** e verifique o endereço exibido após `Acesse: http://`.
-7. Abra esse endereço em um navegador conectado à rede correspondente.
+3. Abra `firmware/doggo/doggo.ino` e escolha o modo de rede por `USAR_AP`:
+   - `false` (atual): conecta à rede cliente definida no firmware;
+   - `true`: cria o ponto de acesso **Doggo**, senha **doggo123**.
+4. Faça as ligações seguindo o [guia de conexões](docs/guia-de-conexoes.md), selecione placa e porta e envie o firmware.
+5. Abra o Monitor Serial a **115200 baud** e verifique o endereço exibido após `Acesse: http://`.
+6. Abra esse endereço em um navegador conectado à rede correspondente.
 
 O firmware existente oferece apenas o controle web temporizado do servo. Balança, temperatura, mensagens Telegram, alertas e cálculo da porção não passam a funcionar por causa desta atualização documental.
