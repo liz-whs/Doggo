@@ -5,8 +5,8 @@
 
 const bool USAR_AP = false;
 
-const char* WIFI_SSID  = "A15 de zize";
-const char* WIFI_SENHA = "jujuba03";
+const char* WIFI_SSID  = "Doggo";
+const char* WIFI_SENHA = "doggo123";
 
 const char* AP_SSID  = "Doggo";
 const char* AP_SENHA = "doggo123";
