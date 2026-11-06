@@ -1,13 +1,15 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESP32Servo.h>
-#include "secrets.h"
 
 
 const bool USAR_AP = false;
 
+const char* WIFI_SSID  = "A15 de zize";
+const char* WIFI_SENHA = "jujuba03";
 
 const char* AP_SSID  = "Doggo";
+const char* AP_SENHA = "doggo123";
 
 const int PINO_SERVO = 19;
 
