@@ -31,7 +31,7 @@ Sistema IoT embarcado em **ESP32** para alimentação e monitoramento da água d
 | Cálculo da quantidade de ração por peso | Pendente de testes da montagem |
 | Leitura DS18B20 | Pendente |
 | Alerta de temperatura da água acima de 25 °C | Pendente |
-| Comando para liberar ração pelo Telegram | Pendente |
+| Informar liberação de ração pelo Telegram | Pendente |
 | Mensagem Telegram com data e hora após liberação | Pendente |
 | NTP, logs persistentes LittleFS e reconexão automática | Pendente |
 | Acionamento de bomba, fonte ou relé | **Fora do escopo** |
