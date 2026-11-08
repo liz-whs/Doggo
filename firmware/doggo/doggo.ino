@@ -34,14 +34,14 @@ const int ANGULO_ABERTO  = 90;
 const int ANGULO_FECHADO = 0;
 const int TEMPO_DOSE = 400;
 
-// Célula de carga (HX711)
+// Célula de carga 
 const int PINO_HX_DT  = 16;
 const int PINO_HX_SCK = 17;
 
-// Termômetro DS18B20 (resistor de 4,7k entre DATA e 3V3)
+// Termômetro DS18B20 
 const int PINO_TEMP = 25;
 
-// Calibração da balança (ajuste conforme explicado)
+// Calibração da balança 
 float FATOR_CALIBRACAO = 420.0;
 
 // ================= OBJETOS =================
@@ -840,7 +840,6 @@ String dataHoraAgora() {
   return String(buf);
 }
 
-// Guarda quando e como a ração foi liberada e marca para avisar no Telegram
 void registrarDose(String origem) {
   struct tm t;
   if (getLocalTime(&t, 300)) {
@@ -917,7 +916,6 @@ void tratarMensagens(int n) {
     int at = texto.indexOf('@');
     if (at > 0) texto = texto.substring(0, at);
 
-    // Responde para qualquer um: serve para descobrir o seu chat ID
     if (texto == "/id") {
       bot.sendMessage(chat, "Seu chat ID é: " + chat, "");
       continue;
@@ -984,7 +982,7 @@ void iniciarTelegram() {
   Serial.println();
   Serial.println("Hora: " + dataHoraAgora());
 
-  String msg = textoMenu();   // mensagem inicial: lista de comandos
+  String msg = textoMenu();   
   if (bot.sendMessageWithReplyKeyboard(CHAT_ID, msg, "", TECLADO, true)) {
     Serial.println("Telegram conectado.");
   } else {
@@ -1085,7 +1083,7 @@ void setup() {
 
   // TEMPERATURA
   sensorTemp.begin();
-  sensorTemp.setResolution(10);   // leitura mais rapida (~190 ms)
+  sensorTemp.setResolution(10);   
 
   // WIFI
   if (USAR_AP) {
