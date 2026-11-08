@@ -19,8 +19,8 @@ const char* AP_SSID  = "Doggo";
 const char* AP_SENHA = "doggo123";
 
 // ----- TELEGRAM -----
-const char* BOT_TOKEN = "9294654656:AAHaMsMtbiz2TArFsTlfpdAq8oas6x8JkEI";
-const char* CHAT_ID   = "9216754638";
+const char* BOT_TOKEN = "-";
+const char* CHAT_ID   = "-";
 
 const int   PORCAO_G = 25;                               
 const float TEMP_LIMITE = 25.0;                          
