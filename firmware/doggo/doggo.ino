@@ -1,7 +1,14 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESP32Servo.h>
+#include <HX711.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <time.h>
 
+// ================= CONFIGURAÇÕES =================
 
 const bool USAR_AP = false;
 
@@ -11,15 +18,58 @@ const char* WIFI_SENHA = "doggo123";
 const char* AP_SSID  = "Doggo";
 const char* AP_SENHA = "doggo123";
 
-const int PINO_SERVO = 19;
+// ----- TELEGRAM -----
+const char* BOT_TOKEN = "9294654656:AAHaMsMtbiz2TArFsTlfpdAq8oas6x8JkEI";
+const char* CHAT_ID   = "9216754638";
 
+const int   PORCAO_G = 25;                               
+const float TEMP_LIMITE = 25.0;                          
+const unsigned long INTERVALO_ALERTA_MS = 30UL * 60UL * 1000UL;  
+const unsigned long INTERVALO_TELEGRAM_MS = 3000;       
+const long FUSO_SEGUNDOS = -3 * 3600;                   
+
+// Servo
+const int PINO_SERVO = 19;
 const int ANGULO_ABERTO  = 90;
 const int ANGULO_FECHADO = 0;
-
 const int TEMPO_DOSE = 400;
+
+// Célula de carga (HX711)
+const int PINO_HX_DT  = 16;
+const int PINO_HX_SCK = 17;
+
+// Termômetro DS18B20 (resistor de 4,7k entre DATA e 3V3)
+const int PINO_TEMP = 25;
+
+// Calibração da balança (ajuste conforme explicado)
+float FATOR_CALIBRACAO = 420.0;
+
+// ================= OBJETOS =================
 
 Servo servo1;
 WebServer server(80);
+
+HX711 balanca;
+OneWire oneWire(PINO_TEMP);
+DallasTemperature sensorTemp(&oneWire);
+
+WiFiClientSecure clienteSeguro;
+UniversalTelegramBot bot(BOT_TOKEN, clienteSeguro);
+
+unsigned long ultimoTelegram = 0;
+bool alertaTempAtivo = false;
+unsigned long ultimoAlertaTemp = 0;
+
+String ultimaHora = "--:--";
+String ultimaNota = "Nenhuma porção ainda";
+String ultimaDataHora = "";
+String notificarDosePendente = "";
+
+float pesoGramas = 0;
+float tempAgua   = NAN;
+unsigned long ultimaLeitura = 0;
+
+// ================= PÁGINA =================
 
 const char PAGINA[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -382,6 +432,13 @@ button:active {
     overflow: hidden;
 }
 
+#nivel {
+    height: 100%;
+    width: 0%;
+    background: var(--verde);
+    transition: width .5s;
+}
+
 .nota {
     margin: 10px 0 0;
     color: var(--suave);
@@ -511,16 +568,13 @@ footer {
 <section class="card">
     <p class="rotulo">
         Ração na tigela
-        <span class="breve">
-            Em breve
-        </span>
     </p>
     <p class="valor">
-        -- <small>g</small>
+        <span id="peso">--</span> <small>g</small>
     </p>
-    <div class="barra"></div>
+    <div class="barra"><div id="nivel"></div></div>
     <p class="nota">
-        A balança vai mostrar quanto ainda tem na tigela.
+        A balança mostra quanto ainda tem na tigela.
     </p>
 </section>
 
@@ -528,15 +582,12 @@ footer {
     <section class="card">
         <p class="rotulo">
             Água
-            <span class="breve">
-                Em breve
-            </span>
         </p>
         <p class="valor">
-            -- <small>°C</small>
+            <span id="temp">--</span> <small>°C</small>
         </p>
         <p class="nota">
-            Monitoramento futuro.
+            Temperatura atual.
         </p>
     </section>
     <section class="card">
@@ -563,6 +614,8 @@ footer {
 </footer>
 </div>
 <script>
+const CAPACIDADE_G = 500; // peso que representa a tigela cheia
+
 function cairRacao() {
     const tigela =
         document.getElementById('tigela');
@@ -632,6 +685,7 @@ function enviar(acao) {
                     .getElementById('ultimaNota')
                     .textContent =
                     'Liberada por esta página';
+                atualizarDados();
             }
         })
 
@@ -653,12 +707,43 @@ function enviar(acao) {
         });
 }
 
+function atualizarDados() {
+    fetch('/dados')
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('peso').textContent =
+                d.peso.toFixed(0);
+            document.getElementById('temp').textContent =
+                d.temp === null ? '--' : d.temp.toFixed(1);
+
+            if (d.ultima) {
+                document.getElementById('ultima').textContent = d.ultima;
+                document.getElementById('ultimaNota').textContent = d.nota;
+            }
+
+            const pct = Math.min(100, (d.peso / CAPACIDADE_G) * 100);
+            document.getElementById('nivel').style.width = pct + '%';
+
+            document.getElementById('conexao').className = 'conexao';
+            document.getElementById('textoConexao').textContent = 'Conectado';
+        })
+        .catch(() => {
+            document.getElementById('conexao').className = 'conexao erro';
+            document.getElementById('textoConexao').textContent = 'Sem conexão';
+        });
+}
+
+atualizarDados();
+setInterval(atualizarDados, 2000);
+
 </script>
 
 </body>
 </html>
 )rawliteral";
 
+
+// ================= SERVO =================
 
 void abrir() {
   servo1.write(ANGULO_ABERTO);
@@ -673,7 +758,257 @@ void umaDose() {
   delay(TEMPO_DOSE);
   servo1.write(ANGULO_FECHADO);
 }
- //ROTAS
+
+// ================= SENSORES =================
+
+void lerSensores() {
+  if (millis() - ultimaLeitura < 1000) return;   // lê a cada 1 segundo
+  ultimaLeitura = millis();
+
+  if (balanca.is_ready()) {
+    pesoGramas = balanca.get_units(3);
+    if (pesoGramas < 0) pesoGramas = 0;
+  }
+
+  sensorTemp.requestTemperatures();
+  float t = sensorTemp.getTempCByIndex(0);
+  tempAgua = (t == DEVICE_DISCONNECTED_C || t == 85.0) ? NAN : t;
+}
+
+// ================= DATA/HORA E TELEGRAM =================
+
+const char* TECLADO = "[[\"/liberar\"],[\"/status\",\"/ultima\"],[\"/peso\",\"/temperatura\"],[\"/dieta\"]]";
+
+const char TEXTO_DIETA[] = R"rawliteral(🐶 CLASSIFICAÇÃO DOS CACHORROS POR PORTE E QUANTIDADE DE RAÇÃO
+
+📌 Cálculo utilizado:
+
+1. RER = 70 × Peso(kg)^0,75
+2. MER = RER × 1,6
+3. Quantidade de ração (g) = MER ÷ 3,8
+
+Considerando uma ração com densidade energética média de 3.800 kcal/kg.
+
+🐾 PORTE MINI / TOY
+• Peso: até 4 kg
+• Quantidade: aproximadamente 40 a 90 g por dia.
+
+🐾 PORTE PEQUENO
+• Peso: 4 a 10 kg
+• Quantidade: aproximadamente 90 a 165 g por dia.
+
+🐾 PORTE MÉDIO
+• Peso: 10 a 25 kg
+• Quantidade: aproximadamente 165 a 325 g por dia.
+
+🐾 PORTE GRANDE
+• Peso: 25 a 45 kg
+• Quantidade: aproximadamente 325 a 500 g por dia.
+
+🐾 PORTE GIGANTE
+• Peso: acima de 45 kg
+• Quantidade: aproximadamente 500 g ou mais por dia.
+
+⚠️ OBSERVAÇÕES:
+
+* Os valores são estimativas para cães adultos saudáveis.
+* A quantidade pode variar conforme idade, castração, atividade física e condição corporal.
+* Filhotes, idosos e cães com necessidades especiais precisam de ajustes.
+* Recomenda-se dividir a quantidade diária em duas refeições.
+
+Importante: os valores são referências médias e não substituem a orientação de um médico-veterinário.)rawliteral";
+
+String textoMenu() {
+  String s = "🐶 Olá! Eu sou o Doggo, seu alimentador inteligente.\n\n";
+  s += "📋 Comandos disponíveis:\n\n";
+  s += "🍽️ /liberar - libera uma porção de ração (cerca de " + String(PORCAO_G) + " g)\n";
+  s += "📊 /status - resumo com peso, temperatura e última porção\n";
+  s += "⚖️ /peso - quanto de ração tem na tigela\n";
+  s += "🌡️ /temperatura - temperatura da água\n";
+  s += "🕒 /ultima - data e hora da última liberação\n";
+  s += "🐕 /dieta - ração indicada por porte do cachorro\n";
+  s += "📋 /menu - mostra esta mensagem de novo\n\n";
+  s += "🔔 Aviso automático: se a água passar de " + String(TEMP_LIMITE, 0) + " °C, eu te alerto!";
+  return s;
+}
+
+String dataHoraAgora() {
+  struct tm t;
+  if (!getLocalTime(&t, 300)) return "hora indisponível";
+  char buf[24];
+  strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &t);
+  return String(buf);
+}
+
+// Guarda quando e como a ração foi liberada e marca para avisar no Telegram
+void registrarDose(String origem) {
+  struct tm t;
+  if (getLocalTime(&t, 300)) {
+    char h[8], d[12], c[24];
+    strftime(h, sizeof(h), "%H:%M", &t);
+    strftime(d, sizeof(d), "%d/%m/%Y", &t);
+    strftime(c, sizeof(c), "%d/%m/%Y %H:%M:%S", &t);
+    ultimaHora = String(h);
+    ultimaNota = String(d) + " · via " + origem;
+    ultimaDataHora = String(c);
+  } else {
+    ultimaHora = "--:--";
+    ultimaNota = "Liberada via " + origem + " (sem hora)";
+    ultimaDataHora = "hora indisponível";
+  }
+  notificarDosePendente = origem;
+}
+
+void enviarMenu(String chat, String texto) {
+  bot.sendMessageWithReplyKeyboard(chat, texto, "", TECLADO, true);
+}
+
+void notificarDose() {
+  if (notificarDosePendente == "") return;
+
+  String origem = notificarDosePendente;
+  notificarDosePendente = "";
+
+  String msg = "✅ Ração liberada!\n\n";
+  msg += "📅 " + ultimaDataHora + "\n";
+  msg += "📲 Acionada por: " + origem + "\n";
+  msg += "🍖 Porção: cerca de " + String(PORCAO_G) + " g";
+  bot.sendMessage(CHAT_ID, msg, "");
+}
+
+String textoStatus() {
+  String s = "📊 Status do Doggo\n\n";
+  s += "⚖️ Ração na tigela: " + String(pesoGramas, 0) + " g\n";
+  s += "🌡️ Água: " + (isnan(tempAgua) ? String("sem leitura") : String(tempAgua, 1) + " °C") + "\n";
+  s += "🍽️ Última porção: " + (ultimaDataHora == "" ? String("nenhuma ainda") : ultimaDataHora) + "\n";
+  s += "🕒 Agora: " + dataHoraAgora();
+  return s;
+}
+
+void verificarTemperatura() {
+  if (isnan(tempAgua)) return;
+
+  if (tempAgua > TEMP_LIMITE) {
+    if (!alertaTempAtivo || millis() - ultimoAlertaTemp >= INTERVALO_ALERTA_MS) {
+      alertaTempAtivo = true;
+      ultimoAlertaTemp = millis();
+
+      String msg = "🌡️🔥 ALERTA: a água está quente!\n\n";
+      msg += "Temperatura: " + String(tempAgua, 1) + " °C\n";
+      msg += "Limite: " + String(TEMP_LIMITE, 0) + " °C\n";
+      msg += "📅 " + dataHoraAgora();
+      bot.sendMessage(CHAT_ID, msg, "");
+    }
+  } else if (alertaTempAtivo && tempAgua <= TEMP_LIMITE - 0.5) {
+    alertaTempAtivo = false;
+
+    String msg = "✅ A temperatura da água voltou ao normal: " + String(tempAgua, 1) + " °C\n";
+    msg += "📅 " + dataHoraAgora();
+    bot.sendMessage(CHAT_ID, msg, "");
+  }
+}
+
+void tratarMensagens(int n) {
+  for (int i = 0; i < n; i++) {
+    String chat  = bot.messages[i].chat_id;
+    String texto = bot.messages[i].text;
+    texto.trim();
+
+    int at = texto.indexOf('@');
+    if (at > 0) texto = texto.substring(0, at);
+
+    // Responde para qualquer um: serve para descobrir o seu chat ID
+    if (texto == "/id") {
+      bot.sendMessage(chat, "Seu chat ID é: " + chat, "");
+      continue;
+    }
+
+    if (chat != String(CHAT_ID)) {
+      bot.sendMessage(chat, "⛔ Acesso negado.", "");
+      continue;
+    }
+
+    if (texto == "/start" || texto == "/menu") {
+      enviarMenu(chat, textoMenu());
+
+    } else if (texto == "/liberar" || texto == "/racao") {
+      umaDose();
+      registrarDose("Telegram");
+      notificarDose();
+
+    } else if (texto == "/dieta" || texto == "/porte" || texto == "/racaoindicada") {
+      bot.sendMessage(chat, String(TEXTO_DIETA), "");
+
+    } else if (texto == "/peso") {
+      bot.sendMessage(chat, "⚖️ Ração na tigela: " + String(pesoGramas, 0) + " g", "");
+
+    } else if (texto == "/temperatura") {
+      if (isnan(tempAgua)) {
+        bot.sendMessage(chat, "🌡️ Sem leitura de temperatura no momento.", "");
+      } else {
+        bot.sendMessage(chat, "🌡️ Água: " + String(tempAgua, 1) + " °C", "");
+      }
+
+    } else if (texto == "/status") {
+      bot.sendMessage(chat, textoStatus(), "");
+
+    } else if (texto == "/ultima") {
+      if (ultimaDataHora == "") {
+        bot.sendMessage(chat, "Nenhuma porção liberada ainda.", "");
+      } else {
+        bot.sendMessage(chat, "🍽️ Última porção liberada em:\n" + ultimaDataHora + "\n(" + ultimaNota + ")", "");
+      }
+
+    } else {
+      bot.sendMessage(chat, "Não entendi 🤔 Use /menu para ver as opções.", "");
+    }
+  }
+}
+
+void iniciarTelegram() {
+  if (USAR_AP) {
+    Serial.println("Telegram desativado no modo AP (sem internet).");
+    return;
+  }
+
+  clienteSeguro.setInsecure();
+  configTime(FUSO_SEGUNDOS, 0, "pool.ntp.org", "time.google.com");
+
+  Serial.print("Sincronizando hora");
+  struct tm t;
+  int tentativas = 0;
+  while (!getLocalTime(&t, 500) && tentativas < 20) {
+    Serial.print(".");
+    tentativas++;
+  }
+  Serial.println();
+  Serial.println("Hora: " + dataHoraAgora());
+
+  String msg = textoMenu();   // mensagem inicial: lista de comandos
+  if (bot.sendMessageWithReplyKeyboard(CHAT_ID, msg, "", TECLADO, true)) {
+    Serial.println("Telegram conectado.");
+  } else {
+    Serial.println("Telegram: nao consegui enviar. Confira BOT_TOKEN e CHAT_ID (envie /id para o bot).");
+  }
+}
+
+void loopTelegram() {
+  if (USAR_AP || WiFi.status() != WL_CONNECTED) return;
+
+  notificarDose();
+  verificarTemperatura();
+
+  if (millis() - ultimoTelegram < INTERVALO_TELEGRAM_MS) return;
+  ultimoTelegram = millis();
+
+  int n = bot.getUpdates(bot.last_message_received + 1);
+  while (n) {
+    tratarMensagens(n);
+    n = bot.getUpdates(bot.last_message_received + 1);
+  }
+}
+
+// ================= ROTAS =================
 
 void rotaPrincipal() {
   server.send_P(
@@ -705,6 +1040,7 @@ void rotaFechar() {
 
 void rotaDose() {
   umaDose();
+  registrarDose("Site");
 
   server.send(
     200,
@@ -713,128 +1049,91 @@ void rotaDose() {
   );
 }
 
+void rotaDados() {
+  String json = "{";
+  json += "\"peso\":" + String(pesoGramas, 1) + ",";
+  json += "\"temp\":" + (isnan(tempAgua) ? String("null") : String(tempAgua, 1)) + ",";
+  json += "\"ultima\":\"" + ultimaHora + "\",";
+  json += "\"nota\":\"" + ultimaNota + "\"";
+  json += "}";
+
+  server.send(200, "application/json", json);
+}
+
+// ================= SETUP =================
 
 void setup() {
 
   Serial.begin(115200);
 
-
   // SERVO
-
   ESP32PWM::allocateTimer(0);
-
   servo1.setPeriodHertz(50);
-
-  servo1.attach(
-    PINO_SERVO,
-    500,
-    2400
-  );
-
+  servo1.attach(PINO_SERVO, 500, 2400);
   fechar();
-
   delay(500);
 
-
-  // WIFI
-
-  if (USAR_AP) {
-
-    WiFi.softAP(
-        AP_SSID,
-        AP_SENHA
-    );
-
-
-    Serial.print(
-        "Rede criada: "
-    );
-
-    Serial.println(
-        AP_SSID
-    );
-
-
-    Serial.print(
-        "Acesse: http://"
-    );
-
-    Serial.println(
-        WiFi.softAPIP()
-    );
-
+  // CELULA DE CARGA
+  balanca.begin(PINO_HX_DT, PINO_HX_SCK);
+  balanca.set_scale(FATOR_CALIBRACAO);
+  if (balanca.wait_ready_timeout(2000)) {
+    balanca.tare();   // zera com a tigela vazia
+    Serial.println("Balanca pronta (tara feita).");
+  } else {
+    Serial.println("HX711 nao encontrado! Confira DT e SCK.");
   }
 
-  else {
+  // TEMPERATURA
+  sensorTemp.begin();
+  sensorTemp.setResolution(10);   // leitura mais rapida (~190 ms)
 
-    WiFi.begin(
-        WIFI_SSID,
-        WIFI_SENHA
-    );
+  // WIFI
+  if (USAR_AP) {
 
+    WiFi.softAP(AP_SSID, AP_SENHA);
 
-    Serial.print(
-        "Conectando"
-    );
+    Serial.print("Rede criada: ");
+    Serial.println(AP_SSID);
 
+    Serial.print("Acesse: http://");
+    Serial.println(WiFi.softAPIP());
 
-    while (
-        WiFi.status()
-        != WL_CONNECTED
-    ) {
+  } else {
 
-        delay(500);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_SENHA);
 
-        Serial.print(".");
+    Serial.print("Conectando");
 
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
     }
-
 
     Serial.println();
 
-
-    Serial.print(
-        "Acesse: http://"
-    );
-
-    Serial.println(
-        WiFi.localIP()
-    );
-
+    Serial.print("Acesse: http://");
+    Serial.println(WiFi.localIP());
   }
 
-
   // ROTAS
-
-  server.on(
-      "/",
-      rotaPrincipal
-  );
-
-  server.on(
-      "/abrir",
-      rotaAbrir
-  );
-
-  server.on(
-      "/fechar",
-      rotaFechar
-  );
-
-  server.on(
-      "/dose",
-      rotaDose
-  );
-
+  server.on("/", rotaPrincipal);
+  server.on("/abrir", rotaAbrir);
+  server.on("/fechar", rotaFechar);
+  server.on("/dose", rotaDose);
+  server.on("/dados", rotaDados);
 
   server.begin();
 
+  Serial.println("Servidor iniciado!");
 
-  Serial.println(
-      "Servidor iniciado!"
-  );
+  iniciarTelegram();
 }
+
+// ================= LOOP =================
 
 void loop() {
   server.handleClient();
+  lerSensores();
+  loopTelegram();
 }
