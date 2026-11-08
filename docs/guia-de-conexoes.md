@@ -59,4 +59,4 @@ Adicionado após o teste conjunto do Doggo.
 | 5V | Servo SG90 |
 | GND | Terra comum |
 
-Na versão atual do firmware, apenas o servo (GPIO 19) está em uso. Os pinos do HX711 e do DS18B20 são os da montagem e serão usados na integração dos sensores.
+O firmware usa todos os pinos acima: servo (GPIO 19), HX711 (GPIO 16 e 17) e DS18B20 (GPIO 25).
