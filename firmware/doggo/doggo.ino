@@ -30,8 +30,8 @@ const long FUSO_SEGUNDOS = -3 * 3600;
 
 // Servo
 const int PINO_SERVO = 19;
-const int ANGULO_ABERTO  = 90;
-const int ANGULO_FECHADO = 0;
+const int ANGULO_ABERTO  = 15;
+const int ANGULO_FECHADO = 90;
 const int TEMPO_DOSE = 400;
 
 // Célula de carga 
